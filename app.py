@@ -1,246 +1,321 @@
 """
-app.py — Streamlit UI for Green Supply Chain Auditor
-AMD Hackathon 2025
+Green Supply Chain Auditor — Agent Definitions
+AMD Hackathon 2026
 
-Run with:
-    streamlit run app.py
+Distance calculation uses OpenStreetMap Nominatim (free, no API key needed).
+Works for any city/port in the world automatically.
 """
 
-import streamlit as st
-import pandas as pd
-import json
-import io
+import os
 import time
+import requests
+from math import radians, sin, cos, sqrt, atan2
+from functools import lru_cache
+from crewai import Agent, Task, Crew, Process
+from crewai.tools import tool
+from langchain_openai import ChatOpenAI
+from dotenv import load_dotenv
+import json
+
+load_dotenv()
 
 # ─────────────────────────────────────────────
-# Page config
+# LLM — Llama-3-70B on AMD Developer Cloud
 # ─────────────────────────────────────────────
-st.set_page_config(
-    page_title="Green Supply Chain Auditor",
-    page_icon="🌿",
-    layout="wide",
-    initial_sidebar_state="expanded",
+llm = ChatOpenAI(
+    model="meta/llama-3-70b-instruct",
+    base_url=os.getenv("AMD_API_BASE_URL"),
+    api_key=os.getenv("AMD_API_KEY"),
+    temperature=0.2,
+    max_tokens=2048,
 )
 
 # ─────────────────────────────────────────────
-# Custom CSS
+# Emission Factors (kg CO₂ per tonne-km)
+# Source: International Transport Forum
 # ─────────────────────────────────────────────
-st.markdown("""
-<style>
-  [data-testid="stAppViewContainer"] { background: #0f1117; }
-  [data-testid="stSidebar"] { background: #161a24; }
-  .metric-card {
-    background: #1c2130;
-    border: 1px solid #2d3555;
-    border-radius: 12px;
-    padding: 20px;
-    text-align: center;
-  }
-  .metric-card .label { color: #8892b0; font-size: 13px; margin-bottom: 6px; }
-  .metric-card .value { color: #e2e8f0; font-size: 28px; font-weight: 600; }
-  .hotspot-card {
-    background: #2a1a1a;
-    border: 1px solid #c0392b;
-    border-radius: 12px;
-    padding: 16px 20px;
-    margin: 12px 0;
-  }
-  .agent-step {
-    background: #161a24;
-    border-left: 3px solid #2ecc71;
-    border-radius: 0 8px 8px 0;
-    padding: 10px 14px;
-    margin: 6px 0;
-    font-size: 13px;
-    color: #a8b2d8;
-  }
-  .agent-step .agent-name { color: #64ffda; font-weight: 600; }
-  .report-box {
-    background: #161a24;
-    border: 1px solid #2d3555;
-    border-radius: 12px;
-    padding: 24px;
-  }
-</style>
-""", unsafe_allow_html=True)
+EMISSION_FACTORS = {
+    "air":   0.800,
+    "sea":   0.015,
+    "road":  0.100,
+    "rail":  0.028,
+}
 
 # ─────────────────────────────────────────────
-# Sidebar
+# Geocoding + Distance (Nominatim — no key needed)
 # ─────────────────────────────────────────────
-with st.sidebar:
-    st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/7/7c/AMD_Logo.svg/320px-AMD_Logo.svg.png", width=100)
-    st.markdown("## 🌿 Green Supply Chain Auditor")
-    st.markdown("Powered by **Llama-3-70B** on **AMD Instinct MI300X** via ROCm")
-    st.divider()
-    st.markdown("### How it works")
-    st.markdown("""
-1. 📂 **Upload** your shipping CSV
-2. 🤖 **3 AI Agents** analyse your data
-3. 📊 **Carbon hotspots** are identified
-4. 🌱 **Green alternatives** are recommended
-    """)
-    st.divider()
-    st.markdown("### Sample CSV format")
-    st.code("""origin,destination,weight_tons,transport_mode
-Shanghai,Karachi,5,Air
-Mumbai,London,12,Sea
-Frankfurt,Paris,3,Road""", language="csv")
 
-    # Download sample CSV
-    sample_csv = "origin,destination,weight_tons,transport_mode\nShanghai,Karachi,5,Air\nMumbai,London,12,Sea\nFrankfurt,Paris,3,Road\nLos Angeles,Tokyo,8,Air\nShenzhen,Rotterdam,20,Sea\n"
-    st.download_button("⬇️ Download sample CSV", sample_csv, "sample_shipments.csv", "text/csv")
-
-# ─────────────────────────────────────────────
-# Main UI
-# ─────────────────────────────────────────────
-st.title("🌿 Green Supply Chain Auditor")
-st.markdown("*Upload your shipping data and our AMD-powered AI agents will audit your carbon footprint in seconds.*")
-
-# File upload
-uploaded_file = st.file_uploader(
-    "Upload shipping data (CSV or paste text below)",
-    type=["csv", "txt"],
-    help="CSV with columns: origin, destination, weight_tons, transport_mode"
-)
-
-# Text fallback
-raw_text_input = st.text_area(
-    "Or paste shipping data directly:",
-    placeholder="origin,destination,weight_tons,transport_mode\nShanghai,Karachi,5,Air\n...",
-    height=120,
-)
-
-run_col, _ = st.columns([1, 3])
-with run_col:
-    run_button = st.button("🚀 Run Audit", type="primary", use_container_width=True)
-
-# ─────────────────────────────────────────────
-# Run pipeline
-# ─────────────────────────────────────────────
-if run_button:
-    # Determine input data
-    raw_data = ""
-    if uploaded_file:
-        raw_data = uploaded_file.read().decode("utf-8")
-    elif raw_text_input.strip():
-        raw_data = raw_text_input.strip()
-    else:
-        st.warning("Please upload a CSV file or paste shipping data first.")
-        st.stop()
-
-    # Show preview of uploaded data
-    st.subheader("📋 Uploaded Data Preview")
+@lru_cache(maxsize=256)
+def geocode_city(city: str) -> tuple[float, float] | None:
+    """
+    Convert a city name to (lat, lon) using OpenStreetMap Nominatim.
+    Results are cached so repeated calls for the same city are instant.
+    """
     try:
-        df_preview = pd.read_csv(io.StringIO(raw_data))
-        st.dataframe(df_preview, use_container_width=True)
+        response = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"q": city, "format": "json", "limit": 1},
+            headers={"User-Agent": "GreenChainAuditor/1.0 (hackathon-project)"},
+            timeout=5,
+        )
+        data = response.json()
+        if data:
+            return (float(data[0]["lat"]), float(data[0]["lon"]))
     except Exception:
-        st.text(raw_data[:500])
+        pass
+    return None
 
-    st.divider()
-    st.subheader("🤖 Agent Activity")
 
-    # Agent progress display
-    agent_log = st.container()
+def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> int:
+    """Great-circle distance between two lat/lon points in km."""
+    R = 6371
+    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+    return round(R * 2 * atan2(sqrt(a), sqrt(1 - a)))
 
-    with agent_log:
-        step1 = st.empty()
-        step2 = st.empty()
-        step3 = st.empty()
 
-    step1.markdown('<div class="agent-step"><span class="agent-name">Agent 1 — Data Extractor</span> &nbsp; Parsing shipment records...</div>', unsafe_allow_html=True)
+# ─────────────────────────────────────────────
+# Tools
+# ─────────────────────────────────────────────
 
-    # ── Import and run agents ──────────────────
-    try:
-        from agents import run_audit
-    except ImportError as e:
-        st.error(f"Could not import agents.py: {e}\nMake sure your AMD API keys are set in .env")
-        st.stop()
+@tool("estimate_distance_km")
+def estimate_distance_km(origin_destination: str) -> str:
+    """
+    Calculates the great-circle distance between any two cities in km.
+    Uses OpenStreetMap Nominatim for geocoding — works for any city in the world.
+    Input: 'City A -> City B'
+    Returns: distance in km as a string, or '5000' as a safe fallback.
+    """
+    parts = [p.strip() for p in origin_destination.split("->")]
+    if len(parts) != 2:
+        return "5000"
 
-    with st.spinner("Running 3-agent pipeline on AMD Instinct MI300X..."):
-        try:
-            results = run_audit(raw_data)
-        except Exception as e:
-            st.error(f"Agent pipeline error: {e}")
-            st.stop()
+    origin, destination = parts
 
-    step1.markdown('<div class="agent-step"><span class="agent-name">Agent 1 — Data Extractor</span> &nbsp; ✅ Shipment records extracted</div>', unsafe_allow_html=True)
-    step2.markdown('<div class="agent-step"><span class="agent-name">Agent 2 — Carbon Calculator</span> &nbsp; ✅ Emissions calculated, hotspot identified</div>', unsafe_allow_html=True)
-    step3.markdown('<div class="agent-step"><span class="agent-name">Agent 3 — Sourcing Strategist</span> &nbsp; ✅ Sustainability roadmap generated</div>', unsafe_allow_html=True)
+    # Respect Nominatim's usage policy — 1 request/second max
+    origin_coords = geocode_city(origin)
+    time.sleep(1)
+    dest_coords = geocode_city(destination)
 
-    # ── Parse emissions JSON ───────────────────
-    st.divider()
-    st.subheader("📊 Emissions Breakdown")
+    if not origin_coords or not dest_coords:
+        print(f"[distance] Could not geocode: {origin} or {destination}. Using fallback 5000km.")
+        return "5000"
 
-    try:
-        emissions_data = json.loads(results["emissions"])
-        shipments = emissions_data.get("shipments", [])
-        total_co2  = emissions_data.get("total_co2_kg", 0)
-        hotspot    = emissions_data.get("hotspot", {})
+    km = haversine_km(*origin_coords, *dest_coords)
+    print(f"[distance] {origin} → {destination}: {km} km")
+    return str(km)
 
-        # Metric cards
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.markdown(f"""<div class="metric-card">
-              <div class="label">Total CO₂ Emissions</div>
-              <div class="value">{total_co2:,.0f} kg</div>
-            </div>""", unsafe_allow_html=True)
-        with col2:
-            st.markdown(f"""<div class="metric-card">
-              <div class="label">Shipments Audited</div>
-              <div class="value">{len(shipments)}</div>
-            </div>""", unsafe_allow_html=True)
-        with col3:
-            air_count = sum(1 for s in shipments if s.get("transport_mode","").lower() == "air")
-            st.markdown(f"""<div class="metric-card">
-              <div class="label">High-Emission Air Routes</div>
-              <div class="value">{air_count}</div>
-            </div>""", unsafe_allow_html=True)
 
-        # Hotspot
-        if hotspot:
-            st.markdown(f"""<div class="hotspot-card">
-              🔥 <strong>Carbon Hotspot:</strong> &nbsp;
-              {hotspot.get('origin','?')} → {hotspot.get('destination','?')} &nbsp;|&nbsp;
-              {hotspot.get('transport_mode','?').upper()} &nbsp;|&nbsp;
-              <strong>{hotspot.get('co2_kg',0):,.0f} kg CO₂</strong> &nbsp;
-              ({round(hotspot.get('co2_kg',0)/total_co2*100) if total_co2 else 0}% of total)
-            </div>""", unsafe_allow_html=True)
+@tool("calculate_emissions")
+def calculate_emissions(shipment_json: str) -> str:
+    """
+    Calculates CO₂ emissions for a list of shipments.
+    Input: JSON string of shipments with fields:
+      origin, destination, weight_tons, transport_mode, distance_km
+    Returns: JSON string with co2_kg per shipment, total_co2_kg, and hotspot.
+    """
+    shipments = json.loads(shipment_json)
+    results = []
+    total_co2 = 0.0
 
-        # Emissions bar chart
-        df_em = pd.DataFrame(shipments)
-        if not df_em.empty and "co2_kg" in df_em.columns:
-            df_em["route"] = df_em["origin"] + " → " + df_em["destination"]
-            df_em = df_em.sort_values("co2_kg", ascending=False)
-            st.bar_chart(df_em.set_index("route")["co2_kg"])
+    for s in shipments:
+        mode     = s.get("transport_mode", "sea").lower().strip()
+        factor   = EMISSION_FACTORS.get(mode, EMISSION_FACTORS["sea"])
+        weight   = float(s.get("weight_tons", 1))
+        distance = float(s.get("distance_km", 1000))
 
-        # Detailed table
-        st.markdown("**Shipment Details**")
-        cols_to_show = ["origin", "destination", "weight_tons", "transport_mode", "distance_km", "co2_kg"]
-        cols_available = [c for c in cols_to_show if c in df_em.columns]
-        st.dataframe(df_em[cols_available], use_container_width=True)
+        co2_kg = round(weight * distance * factor, 2)
+        total_co2 += co2_kg
+        results.append({**s, "co2_kg": co2_kg, "factor_used": factor})
 
-    except (json.JSONDecodeError, KeyError):
-        st.info("Emissions data (raw):")
-        st.text(results.get("emissions", ""))
+    hotspot = max(results, key=lambda x: x["co2_kg"])
 
-    # ── Sustainability Roadmap ─────────────────
-    st.divider()
-    st.subheader("🌱 Sustainability Roadmap")
-    st.markdown('<div class="report-box">', unsafe_allow_html=True)
-    st.markdown(results.get("report", "No report generated."))
-    st.markdown('</div>', unsafe_allow_html=True)
+    return json.dumps({
+        "shipments":    results,
+        "total_co2_kg": round(total_co2, 2),
+        "hotspot":      hotspot,
+    }, indent=2)
 
-    # Download report
-    report_text = results.get("report", "")
-    st.download_button(
-        "⬇️ Download Full Report",
-        report_text,
-        file_name="carbon_audit_report.md",
-        mime="text/markdown",
+
+@tool("lookup_green_suppliers")
+def lookup_green_suppliers(query: str) -> str:
+    """
+    Semantic search over ChromaDB for eco-friendly supplier alternatives.
+    Input: description of the route or product category needing a greener option.
+    Returns: top 3 matching suppliers as a JSON string.
+    """
+    from supplier_db import query_suppliers
+    results = query_suppliers(query, n_results=3)
+    return json.dumps(results, indent=2)
+
+
+# ─────────────────────────────────────────────
+# Agent 1 — Data Extractor (The Librarian)
+# ─────────────────────────────────────────────
+data_extractor = Agent(
+    role="Supply Chain Data Extractor",
+    goal=(
+        "Parse raw shipping documents (CSV rows, invoice text, manifests) and "
+        "extract structured shipment records: origin, destination, weight_tons, "
+        "transport_mode, and distance_km for every shipment. "
+        "Use the estimate_distance_km tool to get the real distance for every route."
+    ),
+    backstory=(
+        "You are a meticulous logistics data analyst. You have processed thousands "
+        "of shipping invoices and know exactly how to spot weights, routes, and "
+        "freight modes buried in messy spreadsheets or free-text documents. "
+        "You always output clean, valid JSON arrays. You never guess distances — "
+        "you always use the estimate_distance_km tool to get accurate figures."
+    ),
+    tools=[estimate_distance_km],
+    llm=llm,
+    verbose=True,
+    allow_delegation=False,
+)
+
+# ─────────────────────────────────────────────
+# Agent 2 — Carbon Calculator (The Engineer)
+# ─────────────────────────────────────────────
+carbon_calculator = Agent(
+    role="Carbon Emissions Engineer",
+    goal=(
+        "Take structured shipment data and calculate the exact CO₂ emissions "
+        "for each route using the calculate_emissions tool. "
+        "Identify and clearly flag the single biggest carbon hotspot."
+    ),
+    backstory=(
+        "You are an environmental engineer with deep expertise in lifecycle "
+        "carbon accounting for global supply chains. You apply IPCC-aligned "
+        "emission factors and always surface the single highest-impact route "
+        "as the 'carbon hotspot' for the business to prioritise."
+    ),
+    tools=[calculate_emissions],
+    llm=llm,
+    verbose=True,
+    allow_delegation=False,
+)
+
+# ─────────────────────────────────────────────
+# Agent 3 — Sourcing Strategist (The Consultant)
+# ─────────────────────────────────────────────
+sourcing_strategist = Agent(
+    role="Green Sourcing Strategist",
+    goal=(
+        "Using the carbon hotspot data, recommend concrete alternatives: "
+        "switch Air freight to Sea, find local/regional green suppliers, "
+        "and produce a prioritised Sustainability Roadmap with estimated CO₂ savings."
+    ),
+    backstory=(
+        "You are a sustainability consultant who has helped Fortune 500 companies "
+        "cut supply chain emissions by 40%. You combine knowledge of global "
+        "logistics networks with a database of verified eco-friendly suppliers "
+        "to produce actionable, ROI-driven recommendations."
+    ),
+    tools=[lookup_green_suppliers],
+    llm=llm,
+    verbose=True,
+    allow_delegation=False,
+)
+
+# ─────────────────────────────────────────────
+# Tasks
+# ─────────────────────────────────────────────
+
+def build_tasks(raw_data: str):
+    extract_task = Task(
+        description=(
+            f"Here is the raw supply chain data provided by the user:\n\n"
+            f"{raw_data}\n\n"
+            "Extract every shipment into a JSON array. Each element must have: "
+            "origin (str), destination (str), weight_tons (float), "
+            "transport_mode (str: air/sea/road/rail), distance_km (float). "
+            "For EVERY shipment, call the estimate_distance_km tool with format "
+            "'Origin -> Destination' to get the real distance. "
+            "Return ONLY the JSON array, no extra text."
+        ),
+        expected_output=(
+            "A valid JSON array of shipment objects, each with: "
+            "origin, destination, weight_tons, transport_mode, distance_km. "
+            "distance_km must come from the estimate_distance_km tool, not guessed."
+        ),
+        agent=data_extractor,
     )
 
-    # ── Raw extraction (expandable) ────────────
-    with st.expander("🔍 Raw Extraction Output (Agent 1)"):
-        st.text(results.get("extraction", ""))
+    calc_task = Task(
+        description=(
+            "Take the JSON array from the previous task and pass it directly to "
+            "the calculate_emissions tool. Return the full JSON result exactly as "
+            "the tool returns it — do not modify or summarise."
+        ),
+        expected_output=(
+            "A JSON object with: shipments (array with co2_kg per row), "
+            "total_co2_kg (float), and hotspot (the single highest-emission shipment)."
+        ),
+        agent=carbon_calculator,
+        context=[extract_task],
+    )
 
-    st.success("✅ Audit complete! Powered by AMD Instinct MI300X + Llama-3-70B via ROCm")
+    strategy_task = Task(
+        description=(
+            "Using the emissions data and hotspot from the previous task, produce a "
+            "Sustainability Roadmap. For the top 3 highest-emission routes:\n"
+            "1. Recommend switching transport mode where beneficial (e.g. Air → Sea)\n"
+            "2. Use lookup_green_suppliers to find a specific eco-friendly supplier for each\n"
+            "3. Estimate the CO₂ reduction percentage for each recommendation\n\n"
+            "Format the final output as markdown with:\n"
+            "- Executive Summary (2-3 sentences)\n"
+            "- Top 3 Recommendations (ranked by CO₂ savings, with supplier names)\n"
+            "- Summary table of estimated CO₂ reductions\n"
+        ),
+        expected_output=(
+            "A markdown Sustainability Roadmap with executive summary, "
+            "top 3 ranked recommendations each with a named green supplier, "
+            "and a CO₂ reduction summary table."
+        ),
+        agent=sourcing_strategist,
+        context=[calc_task],
+    )
+
+    return [extract_task, calc_task, strategy_task]
+
+
+# ─────────────────────────────────────────────
+# Crew runner — called by Streamlit
+# ─────────────────────────────────────────────
+
+def run_audit(raw_data: str) -> dict:
+    """
+    Run the full 3-agent audit pipeline.
+    Returns dict with keys: extraction, emissions, report
+    """
+    tasks = build_tasks(raw_data)
+
+    crew = Crew(
+        agents=[data_extractor, carbon_calculator, sourcing_strategist],
+        tasks=tasks,
+        process=Process.sequential,
+        verbose=True,
+    )
+
+    result = crew.kickoff()
+
+    return {
+        "extraction": tasks[0].output.raw if tasks[0].output else "",
+        "emissions":  tasks[1].output.raw if tasks[1].output else "",
+        "report":     tasks[2].output.raw if tasks[2].output else str(result),
+    }
+
+
+if __name__ == "__main__":
+    # Smoke test — uses live Nominatim geocoding
+    sample = """
+    origin,destination,weight_tons,transport_mode
+    Shanghai,Karachi,5,Air
+    Mumbai,London,12,Sea
+    Frankfurt,Paris,3,Road
+    """
+    output = run_audit(sample)
+    print("\n===== FINAL REPORT =====\n")
+    print(output["report"])
