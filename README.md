@@ -62,11 +62,12 @@ streamlit run app.py
 ## Sample Input CSV
 
 ```csv
-origin,destination,weight_tons,transport_mode
-Shanghai,Karachi,5,Air
-Mumbai,London,12,Sea
-Frankfurt,Paris,3,Road
-Los Angeles,Tokyo,8,Air
+origin,destination,weight_tons,transport_mode,product_category
+Shanghai,Karachi,12.5,Air,Electronics
+Shenzhen,Rotterdam,30.0,Rail,Solar Components
+Sao Paulo,New Jersey,19.5,Air,Raw Coffee
+Hamburg,Dubai,33.0,Sea,Steel Rails
+Seattle,Lahore,14.0,Air,Aerospace Parts
 ```
 
 ---
