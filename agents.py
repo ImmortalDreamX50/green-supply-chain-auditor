@@ -1,6 +1,6 @@
 """
 Green Supply Chain Auditor — Agent Definitions
-AMD Hackathon 2025
+AMD Hackathon 2026
 """
 
 import os
