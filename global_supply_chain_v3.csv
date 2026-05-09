@@ -1,0 +1,16 @@
+origin,destination,weight_tons,transport_mode,product_category,priority
+Shanghai,Karachi,12.5,Air,Electronics,High
+Mumbai,London,45.0,Sea,Textiles,Medium
+Shenzhen,Rotterdam,30.0,Rail,Solar Components,High
+Frankfurt,Paris,4.2,Road,Machinery,Low
+Dubai,Karachi,18.0,Sea,Chemicals,Medium
+Los Angeles,Tokyo,8.5,Air,Auto Parts,High
+Dhaka,New York,22.0,Sea,Apparel,Medium
+Guangzhou,Karachi,15.0,Air,Consumer Goods,High
+Singapore,Sydney,10.0,Sea,Batteries,Medium
+Busan,London,25.5,Sea,Heavy Equipment,Low
+Hamburg,Dubai,33.0,Sea,Steel Rails,Medium
+Sao Paulo,New Jersey,19.5,Air,Raw Coffee,High
+Hanoi,Melbourne,11.2,Sea,Footwear,Medium
+Istanbul,Berlin,7.8,Road,Textiles,Low
+Seattle,Lahore,14.0,Air,Aerospace Parts,High
