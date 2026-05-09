@@ -1,5 +1,5 @@
 # 🌿 Green Supply Chain Auditor
-**AMD Hackathon 2025** — Multi-Agent ESG Carbon Auditing System
+**AMD Hackathon 2026** — Multi-Agent ESG Carbon Auditing System
 
 > *"Companies are failing their climate goals because they can't track their tier-2 suppliers. Our AMD-powered agentic system audits entire supply chains in seconds — not months."*
 
