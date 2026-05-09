@@ -1,6 +1,6 @@
 """
 supplier_db.py — ChromaDB Vector Store for Eco-Friendly Suppliers
-AMD Hackathon 2025
+AMD Hackathon 2026
 
 Run this file once to seed the database:
     python supplier_db.py
@@ -17,7 +17,6 @@ COLLECTION_NAME = "green_suppliers"
 
 # ─────────────────────────────────────────────
 # Seed Data — Eco-Friendly Supplier Profiles
-# Expand this list for a richer demo
 # ─────────────────────────────────────────────
 SUPPLIERS = [
     {
@@ -125,6 +124,76 @@ SUPPLIERS = [
         "co2_rating": "A+",
         "certifications": "Nordic Swan Ecolabel, ISO 50001",
     },
+    {
+        "id": "sup_009",
+        "name": "AtlanticGreen Cargo",
+        "description": (
+            "Low-emission sea freight on South America to North America and Europe routes. "
+            "Covers Sao Paulo, Buenos Aires, Santos port to New York, New Jersey, Rotterdam. "
+            "Specialises in agricultural commodities, raw coffee, and food-grade cargo. "
+            "Wind-assisted vessels reduce emissions by 30% vs conventional Atlantic shipping."
+        ),
+        "region": "South America, North America, Europe",
+        "transport_mode": "sea",
+        "co2_rating": "A",
+        "certifications": "Clean Cargo Working Group, ISO 14001",
+    },
+    {
+        "id": "sup_010",
+        "name": "PacificNorth Freight",
+        "description": (
+            "Eco-certified sea freight connecting US Pacific Northwest ports (Seattle, Portland, "
+            "Vancouver) to South Asia including Lahore via Karachi, and Southeast Asia. "
+            "LNG-powered fleet. Ideal alternative to air freight for aerospace parts, "
+            "industrial equipment, and manufactured goods on high-priority routes."
+        ),
+        "region": "North America, South Asia",
+        "transport_mode": "sea",
+        "co2_rating": "A",
+        "certifications": "SmartWay, Green Marine",
+    },
+    {
+        "id": "sup_011",
+        "name": "BengalSea Logistics",
+        "description": (
+            "Dhaka and Chittagong-based sea freight consolidator serving North America "
+            "and European destinations. Specialises in apparel, garments, and textile exports. "
+            "Carbon offset program covers all shipments. "
+            "Routes: Dhaka/Chittagong to New York, London, Rotterdam, Hamburg."
+        ),
+        "region": "South Asia, North America, Europe",
+        "transport_mode": "sea",
+        "co2_rating": "B+",
+        "certifications": "Sustainable Apparel Coalition, WRAP",
+    },
+    {
+        "id": "sup_012",
+        "name": "KoreaSea Green",
+        "description": (
+            "South Korean eco-shipping company operating Busan to Europe and Middle East routes. "
+            "Covers Busan to London, Rotterdam, Hamburg, Dubai. "
+            "Fleet powered by LNG and hybrid scrubber technology. "
+            "Handles heavy equipment, steel, and industrial cargo with low-emission certification."
+        ),
+        "region": "East Asia, Europe, Middle East",
+        "transport_mode": "sea",
+        "co2_rating": "A",
+        "certifications": "Korean Register Green Ship, IMO Tier III",
+    },
+    {
+        "id": "sup_013",
+        "name": "AsiaPacific EcoFreight",
+        "description": (
+            "Regional sea freight across Southeast Asia and Oceania. "
+            "Key routes: Singapore, Hanoi, Ho Chi Minh City to Sydney, Melbourne, Brisbane. "
+            "Specialises in electronics, batteries, footwear, and consumer goods. "
+            "Solar-assisted vessels with real-time carbon tracking dashboard for clients."
+        ),
+        "region": "Southeast Asia, Oceania",
+        "transport_mode": "sea",
+        "co2_rating": "A+",
+        "certifications": "Asia Green Freight Network, ISO 14001",
+    },
 ]
 
 # ─────────────────────────────────────────────
@@ -205,7 +274,13 @@ def query_suppliers(query: str, n_results: int = 3) -> list[dict]:
 if __name__ == "__main__":
     seed_database()
     # Quick test query
-    print("\nTest query: 'air freight from Shanghai to Karachi alternative'")
-    results = query_suppliers("air freight from Shanghai to Karachi alternative")
-    for r in results:
-        print(f"  → {r['supplier_name']} ({r['co2_rating']}) — score: {r['relevance_score']}")
+    queries = [
+        "air freight Sao Paulo to New Jersey raw coffee alternative",
+        "air freight Seattle to Lahore aerospace parts alternative",
+        "sea freight Singapore to Sydney batteries",
+    ]
+    for q in queries:
+        print(f"\nTest query: '{q}'")
+        res = query_suppliers(q)
+        for r in res:
+            print(f"  → {r['supplier_name']} ({r['co2_rating']}) — score: {r['relevance_score']}")
