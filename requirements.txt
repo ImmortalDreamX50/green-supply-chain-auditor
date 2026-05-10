@@ -2,7 +2,9 @@ streamlit>=1.35.0
 pandas>=2.2.2
 python-dotenv>=1.0.1
 requests>=2.32.3
-crewai>=0.11.0,<0.12.0
-langchain-openai>=0.1.6,<0.2.0
-langchain>=0.1.0,<0.2.0
-openai>=1.0.0
+
+crewai==0.80.0
+langchain-openai==0.2.14
+
+chromadb==0.5.23
+sentence-transformers==3.0.1
