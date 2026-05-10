@@ -5,11 +5,17 @@ AMD Hackathon 2026
 
 import os
 import json
+from pathlib import Path
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
-load_dotenv()
+# Load environment variables from .env located next to agents.py
+env_path = Path(__file__).resolve().parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
+else:
+    load_dotenv()
 
 # ─────────────────────────────────────────────
 # LLM — AMD first, OpenAI fallback (lazy init)
