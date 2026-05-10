@@ -1,6 +1,6 @@
 """
 app.py — Streamlit UI for Green Supply Chain Auditor
-AMD Hackathon 2025
+AMD Hackathon 2026
 
 Run with:
     streamlit run app.py
@@ -849,7 +849,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 # Copyright/credit
 st.markdown("""
 <div style="text-align: center; color: #475569; padding: 2rem 0 1rem 0; font-size: 0.875rem;">
-    🌿 <b>Green Supply Chain Auditor</b> | Built for AMD Hackathon 2025<br>
-    <span style="color: #64748b;">Empowering sustainable logistics through AI</span>
+    🌿 <b>Green Supply Chain Auditor</b> | Built for AMD Hackathon 2026<br>
+    <span style="color: #64748b;">Developed by <b>Redcore Collective</b> &nbsp;·&nbsp; Empowering sustainable logistics through AI</span>
 </div>
 """, unsafe_allow_html=True)
