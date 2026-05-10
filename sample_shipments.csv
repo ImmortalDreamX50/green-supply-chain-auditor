@@ -1,0 +1,11 @@
+origin,destination,weight_tons,transport_mode,product_category
+Shanghai,Karachi,12.5,Air,Electronics
+Shenzhen,Rotterdam,30.0,Sea,Solar Components
+Sao Paulo,New Jersey,19.5,Air,Raw Coffee
+Hamburg,Dubai,33.0,Sea,Steel Rails
+Seattle,Lahore,14.0,Air,Aerospace Parts
+Mumbai,London,25.0,Sea,Textiles
+Los Angeles,Tokyo,8.5,Air,Pharmaceuticals
+Frankfurt,Paris,3.2,Road,Automotive Parts
+Shanghai,Hamburg,45.0,Sea,Machinery
+New York,London,6.0,Air,Medical Devices

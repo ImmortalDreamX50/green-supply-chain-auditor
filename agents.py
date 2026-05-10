@@ -13,12 +13,11 @@ import json
 load_dotenv()
 
 # ─────────────────────────────────────────────
-# LLM — Llama-3-70B on AMD Developer Cloud
+# LLM — OpenAI GPT-3.5-Turbo
 # ─────────────────────────────────────────────
 llm = ChatOpenAI(
-    model="meta/llama-3-70b-instruct",          # AMD Developer Cloud model name
-    base_url=os.getenv("AMD_API_BASE_URL"),      # e.g. https://api.amd.com/v1
-    api_key=os.getenv("AMD_API_KEY"),
+    model="gpt-3.5-turbo",                        # Fast and available on all OpenAI accounts
+    api_key=os.getenv("OPENAI_API_KEY"),
     temperature=0.2,
     max_tokens=2048,
 )
@@ -90,20 +89,46 @@ def estimate_distance_km(origin_destination: str) -> str:
     Returns: estimated distance in km as a string.
     """
     # Approximate great-circle distances for common routes (hackathon hardcodes)
-    # In production, call a routing API
+    # In production, call a routing API like Google Distance Matrix
     DISTANCES = {
+        # Asia to Middle East
         ("shanghai", "karachi"):   4800,
+        ("shanghai", "dubai"):     5900,
+        ("shenzhen", "karachi"):   4700,
+        # Asia to Europe
         ("mumbai",   "london"):   11000,
+        ("mumbai",   "rotterdam"): 10800,
+        ("shanghai", "rotterdam"): 19500,
+        ("shenzhen", "rotterdam"): 21000,
+        ("shanghai", "hamburg"):   19200,
+        ("chennai",  "london"):    11200,
+        # Intra-Europe
         ("frankfurt","paris"):      480,
+        ("amsterdam","madrid"):    1450,
+        ("berlin",   "warsaw"):     520,
+        ("hamburg",  "dubai"):     5200,
+        # Trans-Pacific
         ("los angeles","tokyo"):   8800,
+        ("los angeles","shanghai"):11000,
+        ("seattle",  "tokyo"):     7700,
+        ("seattle",  "lahore"):   11200,
+        # Trans-Atlantic
         ("new york",  "london"):   5500,
-        ("shenzhen",  "rotterdam"):21000,
+        ("new york",  "paris"):    5800,
+        # Americas
+        ("sao paulo", "new york"):  7700,
+        ("sao paulo", "new jersey"):7700,
     }
     parts = [p.strip().lower() for p in origin_destination.split("->")]
     if len(parts) == 2:
         key = tuple(parts)
-        dist = DISTANCES.get(key) or DISTANCES.get((parts[1], parts[0])) or 5000
-        return str(dist)
+        # Try forward and reverse lookup
+        dist = DISTANCES.get(key) or DISTANCES.get((parts[1], parts[0]))
+        if dist:
+            return str(dist)
+        # Fallback: estimate based on region (very rough)
+        # Inter-continental: 8000-15000 km, Intra-continental: 2000-5000 km
+        return "7500"  # average long-distance route
     return "5000"  # fallback default
 
 
@@ -240,22 +265,31 @@ def run_audit(raw_data: str) -> dict:
     Run the full 3-agent audit pipeline.
     Returns dict with keys: extraction, emissions, report
     """
-    tasks = build_tasks(raw_data)
+    try:
+        tasks = build_tasks(raw_data)
 
-    crew = Crew(
-        agents=[data_extractor, carbon_calculator, sourcing_strategist],
-        tasks=tasks,
-        process=Process.sequential,
-        verbose=True,
-    )
+        crew = Crew(
+            agents=[data_extractor, carbon_calculator, sourcing_strategist],
+            tasks=tasks,
+            process=Process.sequential,
+            verbose=True,
+        )
 
-    result = crew.kickoff()
+        result = crew.kickoff()
 
-    return {
-        "extraction": tasks[0].output.raw if tasks[0].output else "",
-        "emissions":  tasks[1].output.raw if tasks[1].output else "",
-        "report":     tasks[2].output.raw if tasks[2].output else str(result),
-    }
+        return {
+            "extraction": tasks[0].output.raw if tasks[0].output else "",
+            "emissions":  tasks[1].output.raw if tasks[1].output else "",
+            "report":     tasks[2].output.raw if tasks[2].output else str(result),
+        }
+    except Exception as e:
+        # Return error in a format the UI can handle
+        error_msg = f"Error during audit: {str(e)}"
+        return {
+            "extraction": f"[Error] {error_msg}",
+            "emissions":  '{"shipments": [], "total_co2_kg": 0, "hotspot": {}}',
+            "report":     f"# Error\n\n{error_msg}\n\nPlease check your API credentials and try again.",
+        }
 
 
 if __name__ == "__main__":

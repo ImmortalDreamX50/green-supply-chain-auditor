@@ -1,0 +1,44 @@
+"""
+Quick API Configuration Guide
+
+Choose ONE option below:
+"""
+
+# ============================================================
+# OPTION A: AMD Developer Cloud (Recommended for Hackathon)
+# ============================================================
+# 1. Get your AMD API credentials from AMD Developer Cloud
+# 2. Add to .env file:
+
+AMD_API_KEY=your_amd_api_key_here
+AMD_API_BASE_URL=https://api.amd.com/v1  # or your AMD endpoint
+
+# No code changes needed - agents.py already configured!
+
+
+# ============================================================
+# OPTION B: OpenAI (Quick Testing Fallback)
+# ============================================================
+# If you don't have AMD access yet, use OpenAI:
+
+# 1. Add to .env file:
+OPENAI_API_KEY=sk-your-openai-key-here
+
+# 2. Edit agents.py lines 18-23, replace with:
+"""
+llm = ChatOpenAI(
+    model="gpt-4",  # or "gpt-3.5-turbo" for faster
+    api_key=os.getenv("OPENAI_API_KEY"),
+    temperature=0.2,
+    max_tokens=2048,
+)
+"""
+
+
+# ============================================================
+# Testing Your Connection
+# ============================================================
+# After configuring, run:
+python test_amd_connection.py     # Test API
+python agents.py                  # Test full pipeline
+streamlit run app.py              # Launch UI
