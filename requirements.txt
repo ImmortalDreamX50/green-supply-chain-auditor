@@ -1,7 +1,8 @@
-crewai==1.9.3
-langchain-openai
-chromadb
-streamlit
-pandas
-python-dotenv
-sentence-transformers
+streamlit==1.35.0
+pandas==2.2.2
+python-dotenv==1.0.1
+requests==2.32.3
+crewai==0.80.0
+langchain-openai==0.1.6
+chromadb==0.5.23
+sentence-transformers==3.0.1
