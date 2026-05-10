@@ -12,27 +12,45 @@ from langchain_core.messages import HumanMessage, SystemMessage
 load_dotenv()
 
 # ─────────────────────────────────────────────
-# LLM — AMD first, OpenAI fallback
+# LLM — AMD first, OpenAI fallback (lazy init)
 # ─────────────────────────────────────────────
 AMD_API_KEY  = os.getenv("AMD_API_KEY")
 AMD_API_BASE = os.getenv("AMD_API_BASE_URL")
 OPENAI_KEY   = os.getenv("OPENAI_API_KEY")
 
-if AMD_API_KEY and AMD_API_BASE:
-    llm = ChatOpenAI(
-        model="meta/llama-3-70b-instruct",
-        base_url=AMD_API_BASE,
-        api_key=AMD_API_KEY,
-        temperature=0.2,
-        max_tokens=2048,
-    )
-else:
-    llm = ChatOpenAI(
-        model="gpt-3.5-turbo",                        # Fast and available on all OpenAI accounts
-        api_key=OPENAI_KEY,
-        temperature=0.2,
-        max_tokens=2048,
-    )
+_llm = None
+
+def get_llm():
+    """Lazily initialize LLM on first use"""
+    global _llm
+    if _llm is not None:
+        return _llm
+    
+    if not AMD_API_KEY and not OPENAI_KEY:
+        raise ValueError(
+            "❌ No API credentials found!\n\n"
+            "Please set either:\n"
+            "  1. AMD_API_KEY and AMD_API_BASE_URL (for AMD Instinct MI300X)\n"
+            "  2. OPENAI_API_KEY (for GPT-3.5-Turbo fallback)\n\n"
+            "Add these to your .env file or set as environment variables."
+        )
+    
+    if AMD_API_KEY and AMD_API_BASE:
+        _llm = ChatOpenAI(
+            model="meta/llama-3-70b-instruct",
+            base_url=AMD_API_BASE,
+            api_key=AMD_API_KEY,
+            temperature=0.2,
+            max_tokens=2048,
+        )
+    else:
+        _llm = ChatOpenAI(
+            model="gpt-3.5-turbo",                        # Fast and available on all OpenAI accounts
+            api_key=OPENAI_KEY,
+            temperature=0.2,
+            max_tokens=2048,
+        )
+    return _llm
 
 # ─────────────────────────────────────────────
 # Emission Factors (kg CO₂ per tonne-km)
@@ -148,6 +166,7 @@ def agent_extract(raw_data: str) -> list:
     Parse raw shipping documents and extract structured shipment records.
     Uses LLM to handle messy CSVs, invoices, or free-text manifests.
     """
+    llm = get_llm()
     response = llm.invoke([
         SystemMessage(content=(
             "You are a meticulous logistics data analyst. You have processed thousands "
@@ -210,6 +229,7 @@ def agent_strategise(emissions_data: dict) -> str:
     switch Air freight to Sea, find local/regional green suppliers,
     and produce a prioritised Sustainability Roadmap with estimated CO₂ savings.
     """
+    llm = get_llm()
     hotspot   = emissions_data.get("hotspot", {})
     total_co2 = emissions_data.get("total_co2_kg", 0)
     shipments = emissions_data.get("shipments", [])
