@@ -412,7 +412,7 @@ Mumbai,London,12,Sea""", language="csv")
                 <div style="color: #64748b; font-size: 0.75rem; font-weight: 600;">Routes</div>
             </div>
             <div>
-                <div style="color: #10b981; font-size: 1.75rem; font-weight: 800;">8</div>
+                <div style="color: #10b981; font-size: 1.75rem; font-weight: 800;">13</div>
                 <div style="color: #64748b; font-size: 0.75rem; font-weight: 600;">Suppliers</div>
             </div>
             <div>
