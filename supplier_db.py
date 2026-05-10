@@ -8,8 +8,12 @@ Run this file once to seed the database:
 Then import query_suppliers() in agents.py.
 """
 
-import chromadb
-from chromadb.utils import embedding_functions
+try:
+    import chromadb
+    from chromadb.utils import embedding_functions
+    CHROMADB_AVAILABLE = True
+except Exception:
+    CHROMADB_AVAILABLE = False
 import os
 
 DB_PATH = "./chroma_db"
@@ -17,6 +21,7 @@ COLLECTION_NAME = "green_suppliers"
 
 # ─────────────────────────────────────────────
 # Seed Data — Eco-Friendly Supplier Profiles
+# Expand this list for a richer demo
 # ─────────────────────────────────────────────
 SUPPLIERS = [
     {
@@ -201,8 +206,10 @@ SUPPLIERS = [
 # ─────────────────────────────────────────────
 
 def get_collection():
+    if not CHROMADB_AVAILABLE:
+        return None
     client = chromadb.PersistentClient(path=DB_PATH)
-    ef = embedding_functions.DefaultEmbeddingFunction()   # uses sentence-transformers
+    ef = embedding_functions.DefaultEmbeddingFunction()
     collection = client.get_or_create_collection(
         name=COLLECTION_NAME,
         embedding_function=ef,
@@ -213,13 +220,13 @@ def get_collection():
 
 def seed_database():
     """Populate ChromaDB with supplier profiles. Run once."""
+    if not CHROMADB_AVAILABLE:
+        print("[supplier_db] ChromaDB not available — using keyword fallback.")
+        return
     collection = get_collection()
-
-    # Check if already seeded
     if collection.count() >= len(SUPPLIERS):
         print(f"[supplier_db] Already seeded ({collection.count()} records). Skipping.")
         return
-
     documents = [s["description"] for s in SUPPLIERS]
     ids       = [s["id"] for s in SUPPLIERS]
     metadatas = [
@@ -232,18 +239,46 @@ def seed_database():
         }
         for s in SUPPLIERS
     ]
-
     collection.add(documents=documents, ids=ids, metadatas=metadatas)
     print(f"[supplier_db] Seeded {len(SUPPLIERS)} supplier profiles into ChromaDB.")
+
+
+def _keyword_search(query: str, n_results: int = 3) -> list[dict]:
+    """Fallback keyword search when ChromaDB is unavailable."""
+    query_lower = query.lower()
+    scored = []
+    for s in SUPPLIERS:
+        score = sum(
+            1 for word in query_lower.split()
+            if word in s["description"].lower()
+            or word in s["region"].lower()
+            or word in s["transport_mode"].lower()
+        )
+        scored.append((score, s))
+    scored.sort(key=lambda x: -x[0])
+    return [
+        {
+            "supplier_name":  s["name"],
+            "region":         s["region"],
+            "transport_mode": s["transport_mode"],
+            "co2_rating":     s["co2_rating"],
+            "certifications": s["certifications"],
+            "description":    s["description"],
+            "relevance_score": round(score / max(len(query_lower.split()), 1), 3),
+        }
+        for score, s in scored[:n_results]
+    ]
 
 
 def query_suppliers(query: str, n_results: int = 3) -> list[dict]:
     """
     Semantic search over supplier profiles.
-    Returns a list of matched supplier dicts with name, description, and metadata.
+    Falls back to keyword search if ChromaDB is unavailable.
     """
-    collection = get_collection()
+    if not CHROMADB_AVAILABLE:
+        return _keyword_search(query, n_results)
 
+    collection = get_collection()
     if collection.count() == 0:
         seed_database()
 
@@ -264,7 +299,6 @@ def query_suppliers(query: str, n_results: int = 3) -> list[dict]:
             "description":      results["documents"][0][i],
             "relevance_score":  round(1 - results["distances"][0][i], 3),
         })
-
     return output
 
 
