@@ -7,6 +7,7 @@ import os
 import json
 from pathlib import Path
 from dotenv import load_dotenv
+import streamlit as st
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -20,9 +21,9 @@ else:
 # ─────────────────────────────────────────────
 # LLM — AMD first, OpenAI fallback (lazy init)
 # ─────────────────────────────────────────────
-AMD_API_KEY  = os.getenv("AMD_API_KEY")
-AMD_API_BASE = os.getenv("AMD_API_BASE_URL")
-OPENAI_KEY   = os.getenv("OPENAI_API_KEY")
+AMD_API_KEY  = os.getenv("AMD_API_KEY") or st.secrets.get("AMD_API_KEY")
+AMD_API_BASE = os.getenv("AMD_API_BASE_URL") or st.secrets.get("AMD_API_BASE_URL")
+OPENAI_KEY   = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
 
 _llm = None
 
